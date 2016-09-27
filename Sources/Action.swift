@@ -9,7 +9,7 @@ import enum Result.NoError
 /// Actions enforce serial execution. Any attempt to execute an action multiple
 /// times concurrently will return an error.
 public final class Action<Input, Output, Error: Swift.Error> {
-	private let executeClosure: (Input) -> SignalProducer<Output, Error>
+	private let executeClosure: (Input) -> SignalProducer<Output, Error>?
 	private let eventsObserver: Signal<Event<Output, Error>, NoError>.Observer
 
 	/// A signal of all events generated from applications of the Action.
@@ -46,7 +46,7 @@ public final class Action<Input, Output, Error: Swift.Error> {
 	///                enabled.
 	///   - execute: A closure that returns the signal producer returned by
 	///              calling `apply(Input)` on the action.
-	public init<P: PropertyProtocol>(enabledIf property: P, _ execute: @escaping (Input) -> SignalProducer<Output, Error>) where P.Value == Bool {
+	public init<P: PropertyProtocol>(enabledIf property: P, _ execute: @escaping (Input) -> SignalProducer<Output, Error>?) where P.Value == Bool {
 		executeClosure = execute
 
 		(events, eventsObserver) = Signal<Event<Output, Error>, NoError>.pipe()
@@ -104,12 +104,12 @@ public final class Action<Input, Output, Error: Swift.Error> {
 				}
 			}
 
-			guard startedExecuting else {
+			guard startedExecuting, let producer = self.executeClosure(input) else {
 				observer.send(error: .disabled)
 				return
 			}
 
-			self.executeClosure(input).startWithSignal { signal, signalDisposable in
+			producer.startWithSignal { signal, signalDisposable in
 				disposable += signalDisposable
 
 				signal.observe { event in
@@ -155,7 +155,7 @@ public protocol ActionProtocol {
 	///                enabled.
 	///   - execute: A closure that returns the signal producer returned by
 	///              calling `apply(Input)` on the action.
-	init<P: PropertyProtocol>(enabledIf property: P, _ execute: @escaping (Input) -> SignalProducer<Output, Error>) where P.Value == Bool
+	init<P: PropertyProtocol>(enabledIf property: P, _ execute: @escaping (Input) -> SignalProducer<Output, Error>?) where P.Value == Bool
 
 	/// Whether the action is currently enabled.
 	var isEnabled: Property<Bool> { get }
@@ -183,6 +183,14 @@ extension Action: ActionProtocol {
 	}
 }
 
+extension ActionProtocol {
+	public init<P: PropertyProtocol>(enabledIf property: P, _ execute: @escaping (Input) -> SignalProducer<Output, Error>) where P.Value == Bool {
+		self.init(enabledIf: property) { input -> SignalProducer<Output, Error>? in
+			execute(input)
+		}
+	}
+}
+
 extension ActionProtocol where Input == Void {
 	/// Initializes an action that uses an optional property for its input,
 	/// and is disabled whenever the input is nil. When executed, a SignalProducer
@@ -196,7 +204,7 @@ extension ActionProtocol where Input == Void {
 	///              current value of `input`.
 	public init<P: PropertyProtocol, T>(input: P, _ execute: @escaping (T) -> SignalProducer<Output, Error>) where P.Value == T? {
 		self.init(enabledIf: input.map { $0 != nil }) {
-			execute(input.value!)
+			input.value.map(execute)
 		}
 	}
 
