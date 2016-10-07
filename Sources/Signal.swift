@@ -1492,6 +1492,14 @@ extension SignalProtocol {
 		}
 	}
 
+	func throttle(while shouldThrottle: Signal<Bool, NoError>, on scheduler: SchedulerProtocol) -> Signal<Value, Error> {
+		return throttle(while: Property(initial: false, then: shouldThrottle), on: scheduler)
+	}
+
+	func throttle(while shouldThrottle: SignalProducer<Bool, NoError>, on scheduler: SchedulerProtocol) -> Signal<Value, Error> {
+		return throttle(while: Property(initial: false, then: shouldThrottle), on: scheduler)
+	}
+
 	/// Conditionally throttles values sent on the receiver whenever
 	/// `shouldThrottle` is true, forwarding values on the given scheduler.
 	///
